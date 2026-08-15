@@ -61,6 +61,7 @@ Output is a table with a clickable Strava link for each segment.
 | `--scan` | 0 (= all) | Cap segment-detail lookups to the N shortest/flattest candidates; by default every segment found in the area is checked |
 | `--max-rides` | 10 | How many of your past rides in the area to mine |
 | `--no-explore` / `--no-history` | off | Use only one discovery method |
+| `--csv PATH` | off | Also export all scanned segments (claimed, unclaimed, and ones you already hold) to a CSV file |
 | `--country` | us | Country code for zip lookup |
 | `--no-cache` | off | Ignore cached API responses this run |
 | `--reset-auth` | off | Forget stored credentials and re-authenticate |

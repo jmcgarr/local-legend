@@ -19,6 +19,7 @@ explore sweeps for 7 days), so repeat runs cost only a handful of API calls.
 """
 
 import argparse
+import csv
 import http.server
 import json
 import math
@@ -536,6 +537,24 @@ def dist_cell(r):
         else f"{r['distance']:.0f} m"
 
 
+def export_csv(path, claimed, unclaimed, yours):
+    """All scanned segments (not just the displayed rows), tagged by status."""
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["status", "segment_id", "name", "distance_m",
+                    "avg_grade_pct", "your_efforts_90d", "your_efforts_all",
+                    "legend_efforts_90d", "rides_needed", "score", "url"])
+        for status, rows in (("claimed", claimed), ("unclaimed", unclaimed),
+                             ("yours", yours)):
+            for r in rows:
+                w.writerow([status, r["id"], r["name"],
+                            round(r["distance"], 1), r["avg_grade"],
+                            r.get("your_90d", ""), r["your_lifetime"],
+                            r["ll_efforts"], r.get("rides_needed", ""),
+                            r.get("score", ""),
+                            f"https://www.strava.com/segments/{r['id']}"])
+
+
 # --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
@@ -562,6 +581,8 @@ def main():
                         help="Skip mining your ride history")
     parser.add_argument("--country", default="us",
                         help="Country code for zip lookup (default us)")
+    parser.add_argument("--csv", metavar="PATH",
+                        help="Also export all scanned segments to a CSV file")
     parser.add_argument("--no-cache", action="store_true",
                         help="Ignore cached API responses this run")
     parser.add_argument("--reset-auth", action="store_true",
@@ -716,6 +737,10 @@ def main():
         console.print(f"[green]👑 You're already the Local Legend on "
                       f"{len(yours)} segment(s): "
                       f"{', '.join(r['name'] for r in yours)}[/green]")
+    if args.csv:
+        export_csv(args.csv, claimed, unclaimed, yours)
+        console.print(f"Exported {len(claimed) + len(unclaimed) + len(yours)} "
+                      f"segments to [bold]{args.csv}[/bold]")
     if skipped and not limited:
         console.print(f"[dim]{skipped} segment(s) skipped (detail fetch failed).[/dim]")
     print_budget()
