@@ -75,14 +75,26 @@ def get_client_credentials(reset=False):
 
 class _CallbackHandler(http.server.BaseHTTPRequestHandler):
     code = None
+    error = None
 
     def do_GET(self):
-        params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        _CallbackHandler.code = params.get("code", [None])[0]
+        parsed = urllib.parse.urlparse(self.path)
+        # Browsers also request /favicon.ico etc. — only /callback matters,
+        # and a captured code must never be overwritten by a later request.
+        if parsed.path != "/callback":
+            self.send_response(404)
+            self.end_headers()
+            return
+        params = urllib.parse.parse_qs(parsed.query)
+        if params.get("code"):
+            _CallbackHandler.code = params["code"][0]
+        elif params.get("error"):
+            _CallbackHandler.error = params["error"][0]
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.end_headers()
-        msg = "Authorized! You can close this tab." if _CallbackHandler.code \
+        msg = "Authorized! You can close this tab and return to the terminal." \
+            if _CallbackHandler.code \
             else "Authorization failed or was denied. You can close this tab."
         self.wfile.write(f"<h2>{msg}</h2>".encode())
 
@@ -96,6 +108,8 @@ def browser_authorize(client_id, client_secret):
         f"&redirect_uri={urllib.parse.quote(REDIRECT_URI)}"
         f"&approval_prompt=auto&scope={SCOPES}"
     )
+    _CallbackHandler.code = None
+    _CallbackHandler.error = None
     server = http.server.HTTPServer(("localhost", REDIRECT_PORT), _CallbackHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -105,10 +119,15 @@ def browser_authorize(client_id, client_secret):
     webbrowser.open(auth_url)
 
     deadline = time.time() + 300
-    while _CallbackHandler.code is None and time.time() < deadline:
+    while (_CallbackHandler.code is None and _CallbackHandler.error is None
+           and time.time() < deadline):
         time.sleep(0.5)
     server.shutdown()
 
+    if _CallbackHandler.error is not None:
+        console.print(f"[red]Strava authorization was denied "
+                      f"({_CallbackHandler.error}).[/red]")
+        sys.exit(1)
     if _CallbackHandler.code is None:
         console.print("[red]Timed out waiting for authorization (5 min).[/red]")
         sys.exit(1)
