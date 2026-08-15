@@ -550,11 +550,10 @@ def main():
                         help="Search radius around each zip centroid (default 5)")
     parser.add_argument("--limit", type=int, default=15,
                         help="Rows in the targets table (default 15)")
-    parser.add_argument("--unclaimed", nargs="?", const=30, type=int, default=0,
-                        metavar="N",
-                        help="Also scan up to N extra segments (default 30) "
-                             "hunting for unclaimed ones, even ones you've "
-                             "never ridden")
+    parser.add_argument("--scan", type=int, default=0, metavar="N",
+                        help="Cap detail lookups to the N shortest/flattest "
+                             "candidates (default 0 = scan every segment "
+                             "found in the area)")
     parser.add_argument("--max-rides", type=int, default=10,
                         help="Max past rides in the area to mine for segments (default 10)")
     parser.add_argument("--no-explore", action="store_true",
@@ -637,11 +636,21 @@ def main():
             print_budget()
             sys.exit(1)
 
-        # Cheap pre-rank so we only spend detail API calls on promising segments.
+        # Every candidate gets a detail lookup by default, easiest-looking
+        # first (short/flat), so a rate-limited partial run still covers the
+        # most promising segments. Ridden-ness only matters for tie-breaking.
         pre = sorted(candidates.values(),
-                     key=lambda s: (not s.get("ridden_hint"),
-                                    abs(s["avg_grade"]), s["distance"]))
-        shortlist = pre[:args.limit + args.unclaimed]
+                     key=lambda s: (abs(s["avg_grade"]), s["distance"]))
+        shortlist = pre[:args.scan] if args.scan else pre
+        stale = sum(1 for s in shortlist
+                    if not fresh(seg_cache.get(str(s["id"])), SEGMENT_TTL))
+        if stale:
+            console.print(f"[dim]{len(shortlist)} segments to check: "
+                          f"{len(shortlist) - stale} cached, ~{stale} API "
+                          "calls needed"
+                          + (" — may span several 15-min rate windows; "
+                             "re-run to resume if limited."
+                             if stale > 150 else ".") + "[/dim]")
 
         fallback_counts = history_90day_counts(acts)
         rows, yours = [], []
@@ -699,10 +708,10 @@ def main():
     if claimed:
         print_claimed_table(claimed[:args.limit], area_labels)
     if unclaimed:
-        print_unclaimed_table(unclaimed, area_labels)
-    elif args.unclaimed:
-        console.print("[dim]No unclaimed segments found in the scanned set — "
-                      "try a larger --unclaimed N.[/dim]")
+        print_unclaimed_table(unclaimed[:args.limit], area_labels)
+        if len(unclaimed) > args.limit:
+            console.print(f"[dim]...plus {len(unclaimed) - args.limit} more "
+                          "unclaimed segments (raise --limit to see them).[/dim]")
     if yours:
         console.print(f"[green]👑 You're already the Local Legend on "
                       f"{len(yours)} segment(s): "

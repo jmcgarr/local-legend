@@ -3,12 +3,17 @@
 A CLI that finds cycling segments in a zip code where you have the best shot at
 becoming the Strava **Local Legend** (most efforts in a rolling 90-day window).
 
-Results are sorted by **fewest rides needed to claim Local Legend**: the
+**Every segment found in the area is checked by default** — ridden or not —
+and results are sorted by **fewest rides needed to claim Local Legend**: the
 current Legend's 90-day effort count plus one, **minus the efforts you've
 already logged in the current 90-day window**. Ties are broken by a score that
 favors segments you've **already ridden**, then **shorter**, then **flatter**.
 Unclaimed segments (one ride = instant Legend) get their own second table, and
 segments where you're *already* the Legend are reported separately.
+
+A full first scan of a dense area can exceed one 15-minute rate window; the
+tool shows partial results, caches everything, and a re-run resumes where it
+left off. Use `--scan N` to cap the sweep instead.
 
 Output is a table with a clickable Strava link for each segment.
 
@@ -52,8 +57,8 @@ Output is a table with a clickable Strava link for each segment.
 | Flag | Default | Meaning |
 |---|---|---|
 | `--radius-km` | 5 | Search radius around each zip's centroid |
-| `--limit` | 15 | Rows in the targets table (also caps detail API calls) |
-| `--unclaimed [N]` | off | Scan up to N (default 30) extra segments hunting for unclaimed ones, including ones you've never ridden |
+| `--limit` | 15 | Rows shown per table |
+| `--scan` | 0 (= all) | Cap segment-detail lookups to the N shortest/flattest candidates; by default every segment found in the area is checked |
 | `--max-rides` | 10 | How many of your past rides in the area to mine |
 | `--no-explore` / `--no-history` | off | Use only one discovery method |
 | `--country` | us | Country code for zip lookup |
