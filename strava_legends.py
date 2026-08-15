@@ -9,19 +9,26 @@ Discovery is hybrid:
      tool degrades gracefully to history-only after that.)
   2. Your own recent rides in the area — segments you've already ridden.
 
-Segments are scored by: already ridden > few Local Legend efforts to beat
-> shorter > flatter.
+Results are sorted by fewest rides needed to claim Local Legend, accounting
+for efforts you've already logged in the current 90-day window. Unclaimed
+segments are listed in their own table.
+
+API responses are cached under ~/.cache/strava-legends/ (activities forever —
+they're immutable; segment details and your 90-day effort counts for 24h;
+explore sweeps for 7 days), so repeat runs cost only a handful of API calls.
 """
 
 import argparse
 import http.server
 import json
 import math
+import pathlib
 import sys
 import threading
 import time
 import urllib.parse
 import webbrowser
+from datetime import datetime, timedelta, timezone
 
 import keyring
 import requests
@@ -36,7 +43,39 @@ REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/callback"
 SCOPES = "read,activity:read_all"
 EXPLORE_MAX_DEPTH = 2  # 1 + 4 + 16 = up to 21 explore calls per zip, worst case
 
+CACHE_DIR = pathlib.Path.home() / ".cache" / "strava-legends"
+SEGMENT_TTL = 24 * 3600        # LL effort counts drift slowly
+EFFORTS_TTL = 24 * 3600        # your own 90-day effort counts
+EXPLORE_TTL = 7 * 24 * 3600    # segments don't move
+RIDE_TYPES = ("Ride", "GravelRide", "MountainBikeRide")
+
 console = Console()
+STATS = {"api": 0, "cache": 0}
+LAST_USAGE = {}  # filled from Strava rate-limit response headers
+
+
+class RateLimited(Exception):
+    """Strava returned 429 — salvage what we have instead of dying."""
+
+
+# --------------------------------------------------------------------------
+# Disk cache
+# --------------------------------------------------------------------------
+
+def cache_load(name):
+    try:
+        return json.loads((CACHE_DIR / f"{name}.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def cache_save(name, data):
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    (CACHE_DIR / f"{name}.json").write_text(json.dumps(data))
+
+
+def fresh(entry, ttl):
+    return entry and (time.time() - entry.get("ts", 0)) < ttl
 
 
 # --------------------------------------------------------------------------
@@ -178,39 +217,79 @@ def get_access_token(reset=False):
 # Strava API helpers
 # --------------------------------------------------------------------------
 
-def api_get(token, path, params=None):
+def api_get(token, path, params=None, quiet=False):
+    STATS["api"] += 1
     resp = requests.get(f"{API_BASE}{path}", params=params,
                         headers={"Authorization": f"Bearer {token}"}, timeout=30)
+    usage = resp.headers.get("X-ReadRateLimit-Usage") or \
+        resp.headers.get("X-RateLimit-Usage")
+    limit = resp.headers.get("X-ReadRateLimit-Limit") or \
+        resp.headers.get("X-RateLimit-Limit")
+    if usage and limit:
+        LAST_USAGE.update(zip(("used_15m", "used_day"), usage.split(",")))
+        LAST_USAGE.update(zip(("limit_15m", "limit_day"), limit.split(",")))
     if resp.status_code == 429:
-        console.print("[red]Strava rate limit hit (200 req/15 min, 2000/day). "
-                      "Wait ~15 minutes and try again, or lower --limit.[/red]")
-        sys.exit(1)
-    if resp.status_code in (401, 403):
-        console.print(f"[red]Strava returned {resp.status_code} for {path} — "
-                      "your app tier may not have access to this endpoint.[/red]")
+        raise RateLimited()
+    if resp.status_code in (401, 402, 403):
+        if not quiet:
+            console.print(f"[yellow]Strava returned {resp.status_code} for {path} — "
+                          "your app tier may not have access to this endpoint.[/yellow]")
         return None
     resp.raise_for_status()
     return resp.json()
+
+
+def get_athlete_id(token):
+    cached = cache_load("athlete")
+    if cached.get("id"):
+        STATS["cache"] += 1
+        return cached["id"]
+    me = api_get(token, "/athlete") or {}
+    if me.get("id"):
+        cache_save("athlete", {"id": me["id"]})
+    return me.get("id")
+
+
+def print_budget():
+    parts = [f"{STATS['api']} API calls this run, {STATS['cache']} cache hits"]
+    if LAST_USAGE:
+        parts.append(f"Strava budget used: {LAST_USAGE['used_15m']}/"
+                     f"{LAST_USAGE['limit_15m']} this 15-min window, "
+                     f"{LAST_USAGE['used_day']}/{LAST_USAGE['limit_day']} today")
+    console.print(f"[dim]{' · '.join(parts)}[/dim]")
 
 
 # --------------------------------------------------------------------------
 # Geography
 # --------------------------------------------------------------------------
 
-def zip_to_box(zip_code, radius_km, country="us"):
-    """Zip code -> (lat, lng, bounding box) via the free Zippopotam.us API."""
-    resp = requests.get(f"https://api.zippopotam.us/{country}/{zip_code}", timeout=15)
-    if resp.status_code == 404:
-        console.print(f"[red]Zip code {zip_code} not found.[/red]")
-        return None
-    resp.raise_for_status()
-    place = resp.json()["places"][0]
-    lat, lng = float(place["latitude"]), float(place["longitude"])
+def zip_to_area(zip_code, radius_km, country="us"):
+    """Zip code -> centroid + bounding box, geocode cached forever."""
+    geo = cache_load("geo")
+    key = f"{country}:{zip_code}"
+    if key in geo:
+        STATS["cache"] += 1
+        place = geo[key]
+    else:
+        resp = requests.get(f"https://api.zippopotam.us/{country}/{zip_code}",
+                            timeout=15)
+        if resp.status_code == 404:
+            console.print(f"[red]Zip code {zip_code} not found.[/red]")
+            return None
+        resp.raise_for_status()
+        p = resp.json()["places"][0]
+        place = {
+            "lat": float(p["latitude"]), "lng": float(p["longitude"]),
+            "label": f'{p["place name"]}, {p.get("state abbreviation", "")}'.strip(", "),
+        }
+        geo[key] = place
+        cache_save("geo", geo)
+
+    lat, lng = place["lat"], place["lng"]
     dlat = radius_km / 111.0
     dlng = radius_km / (111.0 * max(math.cos(math.radians(lat)), 0.1))
-    box = (lat - dlat, lng - dlng, lat + dlat, lng + dlng)
-    label = f'{place["place name"]}, {place.get("state abbreviation", "")}'.strip(", ")
-    return {"zip": zip_code, "label": label, "lat": lat, "lng": lng, "box": box}
+    return {"zip": zip_code, "label": place["label"], "lat": lat, "lng": lng,
+            "box": (lat - dlat, lng - dlng, lat + dlat, lng + dlng)}
 
 
 def in_any_box(latlng, boxes, pad=0.0):
@@ -225,14 +304,26 @@ def in_any_box(latlng, boxes, pad=0.0):
 # Discovery
 # --------------------------------------------------------------------------
 
-def explore_segments(token, box, depth=0):
-    """Explore returns at most 10 segments per box; subdivide when saturated."""
-    bounds = f"{box[0]},{box[1]},{box[2]},{box[3]}"
-    data = api_get(token, "/segments/explore",
-                   {"bounds": bounds, "activity_type": "riding"})
-    if data is None:  # endpoint restricted (post Sept 1, 2026) or forbidden
-        return None
-    segs = data.get("segments", [])
+def explore_segments(token, box, cache, depth=0):
+    """Explore returns at most 10 segments per box; subdivide when saturated.
+    Each box's result is cached for EXPLORE_TTL."""
+    key = ",".join(f"{c:.4f}" for c in box)
+    entry = cache.get(key)
+    if fresh(entry, EXPLORE_TTL):
+        STATS["cache"] += 1
+        segs = list(entry["segs"])
+    else:
+        bounds = ",".join(str(c) for c in box)
+        data = api_get(token, "/segments/explore",
+                       {"bounds": bounds, "activity_type": "riding"})
+        if data is None:  # endpoint restricted (post Sept 1, 2026) or forbidden
+            return None
+        segs = [{"id": s["id"], "name": s["name"],
+                 "distance": s.get("distance", 0.0),
+                 "avg_grade": s.get("avg_grade", 0.0)}
+                for s in data.get("segments", [])]
+        cache[key] = {"ts": time.time(), "segs": segs}
+
     if len(segs) >= 10 and depth < EXPLORE_MAX_DEPTH:
         mid_lat = (box[0] + box[2]) / 2
         mid_lng = (box[1] + box[3]) / 2
@@ -243,38 +334,135 @@ def explore_segments(token, box, depth=0):
             (mid_lat, mid_lng, box[2], box[3]),
         ]
         for quad in quadrants:
-            sub = explore_segments(token, quad, depth + 1)
+            sub = explore_segments(token, quad, cache, depth + 1)
             if sub:
                 segs.extend(sub)
     return segs
 
 
-def segments_from_history(token, boxes, max_rides):
-    """Segments you've ridden: scan recent rides that started near the zip(s)."""
-    ridden = {}
-    area_rides = []
-    for page in (1, 2):
-        activities = api_get(token, "/athlete/activities",
-                             {"per_page": 100, "page": page}) or []
-        for act in activities:
-            if act.get("type") not in ("Ride", "GravelRide", "MountainBikeRide"):
-                continue
-            if in_any_box(act.get("start_latlng"), boxes, pad=0.05):
-                area_rides.append(act)
-        if len(activities) < 100 or len(area_rides) >= max_rides:
-            break
+def epoch(iso):
+    return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
 
-    mined = area_rides[:max_rides]
-    for act in mined:
-        detail = api_get(token, f"/activities/{act['id']}",
-                         {"include_all_efforts": "true"})
-        if not detail:
-            continue
-        for effort in detail.get("segment_efforts", []):
-            seg = effort.get("segment") or {}
-            if seg.get("id") and in_any_box(seg.get("start_latlng"), boxes, pad=0.01):
-                ridden[seg["id"]] = seg
-    return ridden, len(mined), len(area_rides)
+
+def update_ride_summaries(token, acts):
+    """Keep a permanent local list of your ride summaries; after the first
+    run only rides newer than the latest cached one are fetched."""
+    latest = acts.get("latest", 0)
+    rides = {r["id"]: r for r in acts.get("rides", [])}
+    page, fetched = 1, 0
+    while True:
+        params = {"per_page": 100, "page": page}
+        if latest:
+            params["after"] = int(latest)
+        batch = api_get(token, "/athlete/activities", params) or []
+        for a in batch:
+            if a.get("type") in RIDE_TYPES and a.get("start_latlng"):
+                rides[a["id"]] = {"id": a["id"],
+                                  "start_latlng": a["start_latlng"],
+                                  "date": epoch(a["start_date"])}
+        fetched += len(batch)
+        # First-ever run is capped at 200 recent activities; incremental
+        # updates page through everything new since last run.
+        if len(batch) < 100 or (not latest and fetched >= 200) or page >= 5:
+            break
+        page += 1
+    if rides:
+        acts["latest"] = max(r["date"] for r in rides.values())
+    acts["rides"] = sorted(rides.values(), key=lambda r: r["date"], reverse=True)
+
+
+def mine_activity(token, acts, act_id):
+    """Segment efforts of one activity, trimmed; cached forever (immutable)."""
+    details = acts.setdefault("details", {})
+    key = str(act_id)
+    if key in details:
+        STATS["cache"] += 1
+        return details[key]
+    detail = api_get(token, f"/activities/{act_id}",
+                     {"include_all_efforts": "true"})
+    if detail is None:
+        return []
+    efforts = []
+    for e in detail.get("segment_efforts", []):
+        seg = e.get("segment") or {}
+        if seg.get("id"):
+            efforts.append({"id": seg["id"], "name": seg.get("name", "?"),
+                            "distance": seg.get("distance", 0.0),
+                            "avg_grade": seg.get("average_grade", 0.0),
+                            "start_latlng": seg.get("start_latlng"),
+                            "date": epoch(e["start_date"]) if e.get("start_date") else 0})
+    details[key] = efforts
+    return efforts
+
+
+def history_90day_counts(acts):
+    """Fallback per-segment 90-day effort counts from mined activities."""
+    cutoff = time.time() - 90 * 86400
+    counts = {}
+    for efforts in acts.get("details", {}).values():
+        for e in efforts:
+            if e["date"] >= cutoff:
+                counts[e["id"]] = counts.get(e["id"], 0) + 1
+    return counts
+
+
+# --------------------------------------------------------------------------
+# Segment details & your 90-day efforts
+# --------------------------------------------------------------------------
+
+def get_segment_detail(token, seg_id, cache):
+    entry = cache.get(str(seg_id))
+    if fresh(entry, SEGMENT_TTL):
+        STATS["cache"] += 1
+        return entry
+    detail = api_get(token, f"/segments/{seg_id}")
+    if detail is None:
+        return None
+    ll = detail.get("local_legend") or {}
+    stats = detail.get("athlete_segment_stats") or {}
+    entry = {
+        "ts": time.time(),
+        "name": detail.get("name", "?"),
+        "distance": detail.get("distance", 0.0),
+        "avg_grade": detail.get("average_grade", 0.0),
+        "ll_efforts": int(ll.get("effort_count") or 0),
+        "ll_athlete_id": ll.get("athlete_id"),
+        "your_lifetime": int(stats.get("effort_count") or 0),
+    }
+    cache[str(seg_id)] = entry
+    return entry
+
+
+EFFORTS_ENDPOINT_OK = True  # flips off after the first 401/402/403
+
+
+def get_90day_count(token, seg_id, lifetime, cache, fallback_counts):
+    """Your efforts on this segment in the last 90 days."""
+    global EFFORTS_ENDPOINT_OK
+    if lifetime == 0:
+        return 0
+    entry = cache.get(str(seg_id))
+    if fresh(entry, EFFORTS_TTL):
+        STATS["cache"] += 1
+        return entry["count"]
+    if EFFORTS_ENDPOINT_OK:
+        # Strava requires both dates, in Z-suffixed ISO8601.
+        now_utc = datetime.now(timezone.utc)
+        fmt = "%Y-%m-%dT%H:%M:%SZ"
+        efforts = api_get(token, "/segment_efforts", {
+            "segment_id": seg_id,
+            "start_date_local": (now_utc - timedelta(days=90)).strftime(fmt),
+            "end_date_local": now_utc.strftime(fmt),
+            "per_page": 100}, quiet=True)
+        if efforts is not None:
+            count = len(efforts)
+            cache[str(seg_id)] = {"ts": time.time(), "count": count}
+            return count
+        EFFORTS_ENDPOINT_OK = False
+        console.print("[yellow]Can't list your segment efforts (endpoint needs "
+                      "a Strava subscription); estimating your 90-day counts "
+                      "from mined ride history instead.[/yellow]")
+    return fallback_counts.get(seg_id, 0)
 
 
 # --------------------------------------------------------------------------
@@ -293,40 +481,59 @@ def score_segments(rows):
     grades = [abs(r["avg_grade"]) for r in rows]
     targets = [r["ll_efforts"] for r in rows]
     for r in rows:
-        s = (3.0 * (1.0 if r["your_efforts"] > 0 else 0.0)
+        s = (3.0 * (1.0 if r["your_lifetime"] > 0 else 0.0)
              + 2.5 * (1.0 - norm(r["ll_efforts"], targets))
              + 1.5 * (1.0 - norm(r["distance"], dists))
              + 1.5 * (1.0 - norm(abs(r["avg_grade"]), grades)))
         r["score"] = round(s / 8.5 * 100)
 
 
-def print_table(rows, area_labels):
-    table = Table(title=f"Easiest Local Legend targets — {', '.join(area_labels)}",
-                  show_lines=False)
+def you_cell(r):
+    if r["your_lifetime"] == 0:
+        return "—"
+    return f"{r['your_90d']}/{r['your_lifetime']}"
+
+
+def print_claimed_table(rows, area_labels):
+    table = Table(title=f"Easiest Local Legend targets — {', '.join(area_labels)}")
     table.add_column("#", justify="right", style="dim")
     table.add_column("Segment")
     table.add_column("Dist", justify="right")
     table.add_column("Grade", justify="right")
-    table.add_column("You", justify="right")
+    table.add_column("You 90d/all", justify="right")
     table.add_column("Rides needed*", justify="right")
     table.add_column("Score", justify="right", style="bold")
     table.add_column("Link", style="cyan")
-
     for i, r in enumerate(rows, 1):
         url = f"https://www.strava.com/segments/{r['id']}"
-        dist = f"{r['distance'] / 1000:.1f} km" if r["distance"] >= 1000 \
-            else f"{r['distance']:.0f} m"
-        needed = f"[green]1 (unclaimed!)[/green]" if r["ll_efforts"] == 0 \
-            else str(r["rides_needed"])
-        you = f"[green]{r['your_efforts']}[/green]" if r["your_efforts"] else "—"
-        table.add_row(str(i), f"[link={url}]{r['name']}[/link]", dist,
-                      f"{r['avg_grade']:.1f}%", you, needed, str(r["score"]), url)
-
+        table.add_row(str(i), f"[link={url}]{r['name']}[/link]", dist_cell(r),
+                      f"{r['avg_grade']:.1f}%", you_cell(r),
+                      str(r["rides_needed"]), str(r["score"]), url)
     console.print(table)
-    console.print("[dim]* Efforts within a rolling 90-day window to claim Local "
-                  "Legend (one more than the current Legend's count; efforts "
-                  "you've already logged in the last 90 days count toward it). "
-                  "'You' = your lifetime efforts on the segment.[/dim]")
+    console.print("[dim]* Rides still needed within the rolling 90-day window "
+                  "to claim Local Legend: current Legend's count + 1, minus "
+                  "your efforts in the last 90 days.[/dim]")
+
+
+def print_unclaimed_table(rows, area_labels):
+    table = Table(title=f"Unclaimed segments (1 ride = Local Legend) — "
+                        f"{', '.join(area_labels)}")
+    table.add_column("#", justify="right", style="dim")
+    table.add_column("Segment")
+    table.add_column("Dist", justify="right")
+    table.add_column("Grade", justify="right")
+    table.add_column("You 90d/all", justify="right")
+    table.add_column("Link", style="cyan")
+    for i, r in enumerate(rows, 1):
+        url = f"https://www.strava.com/segments/{r['id']}"
+        table.add_row(str(i), f"[link={url}]{r['name']}[/link]", dist_cell(r),
+                      f"{r['avg_grade']:.1f}%", you_cell(r), url)
+    console.print(table)
+
+
+def dist_cell(r):
+    return f"{r['distance'] / 1000:.1f} km" if r["distance"] >= 1000 \
+        else f"{r['distance']:.0f} m"
 
 
 # --------------------------------------------------------------------------
@@ -342,7 +549,12 @@ def main():
     parser.add_argument("--radius-km", type=float, default=5.0,
                         help="Search radius around each zip centroid (default 5)")
     parser.add_argument("--limit", type=int, default=15,
-                        help="Number of segments in the final table (default 15)")
+                        help="Rows in the targets table (default 15)")
+    parser.add_argument("--unclaimed", nargs="?", const=30, type=int, default=0,
+                        metavar="N",
+                        help="Also scan up to N extra segments (default 30) "
+                             "hunting for unclaimed ones, even ones you've "
+                             "never ridden")
     parser.add_argument("--max-rides", type=int, default=10,
                         help="Max past rides in the area to mine for segments (default 10)")
     parser.add_argument("--no-explore", action="store_true",
@@ -351,13 +563,20 @@ def main():
                         help="Skip mining your ride history")
     parser.add_argument("--country", default="us",
                         help="Country code for zip lookup (default us)")
+    parser.add_argument("--no-cache", action="store_true",
+                        help="Ignore cached API responses this run")
     parser.add_argument("--reset-auth", action="store_true",
                         help="Forget stored credentials and re-authenticate")
     args = parser.parse_args()
 
+    if args.no_cache:
+        for f in CACHE_DIR.glob("*.json"):
+            if f.stem != "geo":  # geocodes never go stale
+                f.unlink()
+
     token = get_access_token(reset=args.reset_auth)
 
-    areas = [a for a in (zip_to_box(z, args.radius_km, args.country)
+    areas = [a for a in (zip_to_area(z, args.radius_km, args.country)
                          for z in args.zips) if a]
     if not areas:
         sys.exit(1)
@@ -366,75 +585,131 @@ def main():
         console.print(f"Searching around [bold]{a['label']} ({a['zip']})[/bold] "
                       f"±{args.radius_km:g} km")
 
+    explore_cache = cache_load("explore")
+    seg_cache = cache_load("segments")
+    eff_cache = cache_load("efforts90")
+    acts = cache_load("activities")
+    limited = False
     candidates = {}  # segment id -> summary dict
 
-    if not args.no_explore:
-        with console.status("Exploring segments in the area..."):
-            for a in areas:
-                segs = explore_segments(token, a["box"])
-                if segs is None:
-                    console.print(
-                        "[yellow]Explore Segments is unavailable to this app "
-                        "(restricted to Extended Access tier since Sept 1, 2026). "
-                        "Falling back to your ride history only.[/yellow]")
-                    break
-                for s in segs:
-                    candidates[s["id"]] = {
-                        "id": s["id"], "name": s["name"],
-                        "distance": s.get("distance", 0.0),
-                        "avg_grade": s.get("avg_grade", 0.0),
-                        "ridden_hint": False,
+    try:
+        my_id = get_athlete_id(token)
+
+        if not args.no_explore:
+            with console.status("Exploring segments in the area..."):
+                for a in areas:
+                    segs = explore_segments(token, a["box"], explore_cache)
+                    if segs is None:
+                        console.print(
+                            "[yellow]Explore Segments is unavailable to this app "
+                            "(restricted to Extended Access tier since Sept 1, 2026). "
+                            "Falling back to your ride history only.[/yellow]")
+                        break
+                    for s in segs:
+                        candidates.setdefault(s["id"], dict(s, ridden_hint=False))
+            console.print(f"Explore found [bold]{len(candidates)}[/bold] segments.")
+
+        if not args.no_history:
+            with console.status("Mining your recent rides in the area..."):
+                update_ride_summaries(token, acts)
+                area_rides = [r for r in acts.get("rides", [])
+                              if in_any_box(r["start_latlng"], boxes, pad=0.05)]
+                n_ridden = 0
+                for ride in area_rides[:args.max_rides]:
+                    for seg in mine_activity(token, acts, ride["id"]):
+                        if in_any_box(seg.get("start_latlng"), boxes, pad=0.01):
+                            entry = candidates.setdefault(
+                                seg["id"], {k: seg[k] for k in
+                                            ("id", "name", "distance", "avg_grade")})
+                            if not entry.get("ridden_hint"):
+                                entry["ridden_hint"] = True
+                                n_ridden += 1
+            n_mined = min(len(area_rides), args.max_rides)
+            console.print(
+                f"Found [bold]{n_ridden}[/bold] ridden segments across "
+                f"[bold]{n_mined}[/bold] of your [bold]{len(area_rides)}[/bold] "
+                "recent rides in the area"
+                + (" (raise --max-rides to mine more)."
+                   if len(area_rides) > n_mined else "."))
+
+        if not candidates:
+            console.print("[red]No segments found. Try a bigger --radius-km.[/red]")
+            print_budget()
+            sys.exit(1)
+
+        # Cheap pre-rank so we only spend detail API calls on promising segments.
+        pre = sorted(candidates.values(),
+                     key=lambda s: (not s.get("ridden_hint"),
+                                    abs(s["avg_grade"]), s["distance"]))
+        shortlist = pre[:args.limit + args.unclaimed]
+
+        fallback_counts = history_90day_counts(acts)
+        rows, yours = [], []
+        skipped = 0
+        try:
+            with console.status(f"Fetching details for {len(shortlist)} segments..."):
+                for s in shortlist:
+                    d = get_segment_detail(token, s["id"], seg_cache)
+                    if d is None:
+                        skipped += 1
+                        continue
+                    row = {
+                        "id": s["id"], "name": d["name"],
+                        "distance": d["distance"], "avg_grade": d["avg_grade"],
+                        "ll_efforts": d["ll_efforts"],
+                        "your_lifetime": d["your_lifetime"]
+                                         or (1 if s.get("ridden_hint") else 0),
                     }
-        console.print(f"Explore found [bold]{len(candidates)}[/bold] segments.")
+                    if d["ll_athlete_id"] and d["ll_athlete_id"] == my_id:
+                        yours.append(row)
+                        continue
+                    row["your_90d"] = get_90day_count(
+                        token, s["id"], row["your_lifetime"],
+                        eff_cache, fallback_counts)
+                    row["rides_needed"] = max(
+                        1, d["ll_efforts"] + 1 - row["your_90d"])
+                    rows.append(row)
+        except RateLimited:
+            limited = True
+            skipped = len(shortlist) - len(rows) - len(yours)
 
-    if not args.no_history:
-        with console.status("Mining your recent rides in the area..."):
-            ridden, n_mined, n_found = segments_from_history(
-                token, boxes, args.max_rides)
-        console.print(
-            f"Found [bold]{len(ridden)}[/bold] segments across "
-            f"[bold]{n_mined}[/bold] of your [bold]{n_found}[/bold] recent "
-            "rides in the area"
-            + (f" (raise --max-rides to mine more)." if n_found > n_mined else "."))
-        for sid, seg in ridden.items():
-            entry = candidates.setdefault(sid, {
-                "id": sid, "name": seg.get("name", "?"),
-                "distance": seg.get("distance", 0.0),
-                "avg_grade": seg.get("average_grade", 0.0),
-            })
-            entry["ridden_hint"] = True
+    except RateLimited:
+        limited = True
+        rows, yours, skipped = [], [], 0
+    finally:
+        cache_save("explore", explore_cache)
+        cache_save("segments", seg_cache)
+        cache_save("efforts90", eff_cache)
+        cache_save("activities", acts)
 
-    if not candidates:
-        console.print("[red]No segments found. Try a bigger --radius-km.[/red]")
-        sys.exit(1)
-
-    # Cheap pre-rank so we only spend detail API calls on promising segments.
-    pre = sorted(candidates.values(),
-                 key=lambda s: (not s.get("ridden_hint"),
-                                abs(s["avg_grade"]), s["distance"]))
-    shortlist = pre[:args.limit]
-
-    rows = []
-    with console.status(f"Fetching details for top {len(shortlist)} segments..."):
-        for s in shortlist:
-            detail = api_get(token, f"/segments/{s['id']}") or {}
-            ll = detail.get("local_legend") or {}
-            your_stats = detail.get("athlete_segment_stats") or {}
-            rows.append({
-                "id": s["id"],
-                "name": detail.get("name", s["name"]),
-                "distance": detail.get("distance", s["distance"]),
-                "avg_grade": detail.get("average_grade", s["avg_grade"]),
-                "ll_efforts": int(ll.get("effort_count") or 0),
-                "your_efforts": int(your_stats.get("effort_count") or 0)
-                                or (1 if s.get("ridden_hint") else 0),
-            })
-            rows[-1]["rides_needed"] = rows[-1]["ll_efforts"] + 1
+    if limited:
+        console.print("[yellow]Hit Strava's rate limit — showing what was "
+                      "gathered. Everything fetched so far is cached; re-run "
+                      "in ~15 minutes to pick up where this left off.[/yellow]")
 
     score_segments(rows)
+    area_labels = [f"{a['label']} {a['zip']}" for a in areas]
+
+    claimed = [r for r in rows if r["ll_efforts"] > 0]
     # Fewest rides to claim Local Legend first; score breaks ties.
-    rows.sort(key=lambda r: (r["rides_needed"], -r["score"]))
-    print_table(rows, [f"{a['label']} {a['zip']}" for a in areas])
+    claimed.sort(key=lambda r: (r["rides_needed"], -r["score"]))
+    unclaimed = [r for r in rows if r["ll_efforts"] == 0]
+    unclaimed.sort(key=lambda r: -r["score"])
+
+    if claimed:
+        print_claimed_table(claimed[:args.limit], area_labels)
+    if unclaimed:
+        print_unclaimed_table(unclaimed, area_labels)
+    elif args.unclaimed:
+        console.print("[dim]No unclaimed segments found in the scanned set — "
+                      "try a larger --unclaimed N.[/dim]")
+    if yours:
+        console.print(f"[green]👑 You're already the Local Legend on "
+                      f"{len(yours)} segment(s): "
+                      f"{', '.join(r['name'] for r in yours)}[/green]")
+    if skipped and not limited:
+        console.print(f"[dim]{skipped} segment(s) skipped (detail fetch failed).[/dim]")
+    print_budget()
 
 
 if __name__ == "__main__":

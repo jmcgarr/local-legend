@@ -3,10 +3,12 @@
 A CLI that finds cycling segments in a zip code where you have the best shot at
 becoming the Strava **Local Legend** (most efforts in a rolling 90-day window).
 
-Results are sorted by **fewest rides needed to claim Local Legend** (one more
-than the current Legend's 90-day effort count; unclaimed segments need just 1).
-Ties are broken by a score that favors segments you've **already ridden**, then
-**shorter**, then **flatter**.
+Results are sorted by **fewest rides needed to claim Local Legend**: the
+current Legend's 90-day effort count plus one, **minus the efforts you've
+already logged in the current 90-day window**. Ties are broken by a score that
+favors segments you've **already ridden**, then **shorter**, then **flatter**.
+Unclaimed segments (one ride = instant Legend) get their own second table, and
+segments where you're *already* the Legend are reported separately.
 
 Output is a table with a clickable Strava link for each segment.
 
@@ -50,31 +52,49 @@ Output is a table with a clickable Strava link for each segment.
 | Flag | Default | Meaning |
 |---|---|---|
 | `--radius-km` | 5 | Search radius around each zip's centroid |
-| `--limit` | 15 | Rows in the final table (also caps detail API calls) |
+| `--limit` | 15 | Rows in the targets table (also caps detail API calls) |
+| `--unclaimed [N]` | off | Scan up to N (default 30) extra segments hunting for unclaimed ones, including ones you've never ridden |
 | `--max-rides` | 10 | How many of your past rides in the area to mine |
 | `--no-explore` / `--no-history` | off | Use only one discovery method |
 | `--country` | us | Country code for zip lookup |
+| `--no-cache` | off | Ignore cached API responses this run |
 | `--reset-auth` | off | Forget stored credentials and re-authenticate |
 
 ### Example output
 
 ```
                 Easiest Local Legend targets — Petaluma, CA 94952
- #  Segment              Dist    Grade  You  Rides needed*   Score  Link
- 1  Bodega Ave Rollers   1.1 km   1.0%    —  1 (unclaimed!)     71  https://www.strava.com/segments/…
- 2  D St Sprint          0.4 km   0.2%    7               5     96  https://www.strava.com/segments/…
+ #  Segment              Dist    Grade  You 90d/all  Rides needed*  Score  Link
+ 1  D St Sprint          0.4 km   0.2%         3/70              2     96  https://www.strava.com/segments/…
+ 2  Western Ave Roll     2.1 km   0.9%         0/12             15     64  https://www.strava.com/segments/…
+
+               Unclaimed segments (1 ride = Local Legend) — Petaluma, CA 94952
+ #  Segment              Dist    Grade  You 90d/all  Link
+ 1  Bodega Ave Rollers   1.1 km   1.0%            —  https://www.strava.com/segments/…
 ```
 
-`Rides needed*` is how many efforts within a rolling 90-day window it takes to
-claim the crown (one more than the current Legend's count); efforts you've
-already logged in the last 90 days count toward it. `You` is your lifetime
-effort count on the segment.
+`Rides needed*` = current Legend's 90-day effort count + 1, minus the efforts
+you've logged in the last 90 days. Your 90-day counts come from the List
+Segment Efforts endpoint (needs a Strava subscription); without one they're
+estimated from your mined ride history.
 
-## Rate limits
+## Rate limits & caching
 
-Standard-tier apps get ~200 requests / 15 min and 2,000 / day. A default run
-uses roughly `21 × zips` (explore, worst case) + `2` (activity list) +
-`max-rides` + `limit` calls ≈ 50. If you hit a 429, wait 15 minutes.
+Standard-tier apps get ~200 requests / 15 min and 2,000 / day. Every run
+prints how many API calls it made, how many came from cache, and your current
+Strava budget (read from Strava's rate-limit headers).
+
+API responses are cached in `~/.cache/strava-legends/`:
+
+- **your activities** — forever (they're immutable); the activity list is
+  fetched incrementally (only rides newer than the last run)
+- **segment details & your 90-day effort counts** — 24 hours
+- **explore sweeps** — 7 days
+- **zip geocodes** — forever
+
+The first run of a new area costs ~50–80 calls; repeat runs the same day cost
+a handful. If you do hit the limit mid-run, the tool prints what it gathered
+(everything fetched is cached) and a re-run 15 minutes later resumes cheaply.
 
 ## Notes
 
