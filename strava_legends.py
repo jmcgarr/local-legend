@@ -264,7 +264,8 @@ def segments_from_history(token, boxes, max_rides):
         if len(activities) < 100 or len(area_rides) >= max_rides:
             break
 
-    for act in area_rides[:max_rides]:
+    mined = area_rides[:max_rides]
+    for act in mined:
         detail = api_get(token, f"/activities/{act['id']}",
                          {"include_all_efforts": "true"})
         if not detail:
@@ -273,7 +274,7 @@ def segments_from_history(token, boxes, max_rides):
             seg = effort.get("segment") or {}
             if seg.get("id") and in_any_box(seg.get("start_latlng"), boxes, pad=0.01):
                 ridden[seg["id"]] = seg
-    return ridden, len(area_rides)
+    return ridden, len(mined), len(area_rides)
 
 
 # --------------------------------------------------------------------------
@@ -387,9 +388,13 @@ def main():
 
     if not args.no_history:
         with console.status("Mining your recent rides in the area..."):
-            ridden, n_rides = segments_from_history(token, boxes, args.max_rides)
-        console.print(f"Found [bold]{len(ridden)}[/bold] segments across "
-                      f"[bold]{n_rides}[/bold] of your rides in the area.")
+            ridden, n_mined, n_found = segments_from_history(
+                token, boxes, args.max_rides)
+        console.print(
+            f"Found [bold]{len(ridden)}[/bold] segments across "
+            f"[bold]{n_mined}[/bold] of your [bold]{n_found}[/bold] recent "
+            "rides in the area"
+            + (f" (raise --max-rides to mine more)." if n_found > n_mined else "."))
         for sid, seg in ridden.items():
             entry = candidates.setdefault(sid, {
                 "id": sid, "name": seg.get("name", "?"),
