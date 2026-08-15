@@ -497,13 +497,13 @@ def you_cell(r):
 def print_claimed_table(rows, area_labels):
     table = Table(title=f"Easiest Local Legend targets — {', '.join(area_labels)}")
     table.add_column("#", justify="right", style="dim")
-    table.add_column("Segment")
+    table.add_column("Segment", overflow="fold")
     table.add_column("Dist", justify="right")
     table.add_column("Grade", justify="right")
     table.add_column("You 90d/all", justify="right")
     table.add_column("Rides needed*", justify="right")
     table.add_column("Score", justify="right", style="bold")
-    table.add_column("Link", style="cyan")
+    table.add_column("Link", style="cyan", overflow="fold")
     for i, r in enumerate(rows, 1):
         url = f"https://www.strava.com/segments/{r['id']}"
         table.add_row(str(i), f"[link={url}]{r['name']}[/link]", dist_cell(r),
@@ -519,11 +519,11 @@ def print_unclaimed_table(rows, area_labels):
     table = Table(title=f"Unclaimed segments (1 ride = Local Legend) — "
                         f"{', '.join(area_labels)}")
     table.add_column("#", justify="right", style="dim")
-    table.add_column("Segment")
+    table.add_column("Segment", overflow="fold")
     table.add_column("Dist", justify="right")
     table.add_column("Grade", justify="right")
     table.add_column("You 90d/all", justify="right")
-    table.add_column("Link", style="cyan")
+    table.add_column("Link", style="cyan", overflow="fold")
     for i, r in enumerate(rows, 1):
         url = f"https://www.strava.com/segments/{r['id']}"
         table.add_row(str(i), f"[link={url}]{r['name']}[/link]", dist_cell(r),
