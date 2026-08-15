@@ -308,7 +308,7 @@ def print_table(rows, area_labels):
     table.add_column("Dist", justify="right")
     table.add_column("Grade", justify="right")
     table.add_column("You", justify="right")
-    table.add_column("To beat*", justify="right")
+    table.add_column("Rides needed*", justify="right")
     table.add_column("Score", justify="right", style="bold")
     table.add_column("Link", style="cyan")
 
@@ -316,15 +316,16 @@ def print_table(rows, area_labels):
         url = f"https://www.strava.com/segments/{r['id']}"
         dist = f"{r['distance'] / 1000:.1f} km" if r["distance"] >= 1000 \
             else f"{r['distance']:.0f} m"
-        to_beat = "[green]unclaimed![/green]" if r["ll_efforts"] == 0 \
-            else str(r["ll_efforts"])
+        needed = f"[green]1 (unclaimed!)[/green]" if r["ll_efforts"] == 0 \
+            else str(r["rides_needed"])
         you = f"[green]{r['your_efforts']}[/green]" if r["your_efforts"] else "—"
         table.add_row(str(i), f"[link={url}]{r['name']}[/link]", dist,
-                      f"{r['avg_grade']:.1f}%", you, to_beat, str(r["score"]), url)
+                      f"{r['avg_grade']:.1f}%", you, needed, str(r["score"]), url)
 
     console.print(table)
-    console.print("[dim]* Current Local Legend's effort count in the last 90 days "
-                  "(you need more efforts than this in a rolling 90-day window). "
+    console.print("[dim]* Efforts within a rolling 90-day window to claim Local "
+                  "Legend (one more than the current Legend's count; efforts "
+                  "you've already logged in the last 90 days count toward it). "
                   "'You' = your lifetime efforts on the segment.[/dim]")
 
 
@@ -428,9 +429,11 @@ def main():
                 "your_efforts": int(your_stats.get("effort_count") or 0)
                                 or (1 if s.get("ridden_hint") else 0),
             })
+            rows[-1]["rides_needed"] = rows[-1]["ll_efforts"] + 1
 
     score_segments(rows)
-    rows.sort(key=lambda r: r["score"], reverse=True)
+    # Fewest rides to claim Local Legend first; score breaks ties.
+    rows.sort(key=lambda r: (r["rides_needed"], -r["score"]))
     print_table(rows, [f"{a['label']} {a['zip']}" for a in areas])
 
 

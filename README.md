@@ -3,12 +3,10 @@
 A CLI that finds cycling segments in a zip code where you have the best shot at
 becoming the Strava **Local Legend** (most efforts in a rolling 90-day window).
 
-Segments are scored by, in priority order:
-
-1. **Already ridden** — segments you've done before get a big boost
-2. **Few efforts to beat** — the current Local Legend's 90-day effort count (unclaimed segments rank best)
-3. **Shorter** distance
-4. **Flatter** average grade
+Results are sorted by **fewest rides needed to claim Local Legend** (one more
+than the current Legend's 90-day effort count; unclaimed segments need just 1).
+Ties are broken by a score that favors segments you've **already ridden**, then
+**shorter**, then **flatter**.
 
 Output is a table with a clickable Strava link for each segment.
 
@@ -62,14 +60,15 @@ Output is a table with a clickable Strava link for each segment.
 
 ```
                 Easiest Local Legend targets — Petaluma, CA 94952
- #  Segment              Dist    Grade  You  To beat*  Score  Link
- 1  D St Sprint          0.4 km   0.2%    7         4     96  https://www.strava.com/segments/…
- 2  Bodega Ave Rollers   1.1 km   1.0%    —  unclaimed!    71  https://www.strava.com/segments/…
+ #  Segment              Dist    Grade  You  Rides needed*   Score  Link
+ 1  Bodega Ave Rollers   1.1 km   1.0%    —  1 (unclaimed!)     71  https://www.strava.com/segments/…
+ 2  D St Sprint          0.4 km   0.2%    7               5     96  https://www.strava.com/segments/…
 ```
 
-`To beat*` is the current Local Legend's effort count over the last 90 days —
-you become the Legend by logging **more** efforts than that within any 90-day
-window. `You` is your lifetime effort count on the segment.
+`Rides needed*` is how many efforts within a rolling 90-day window it takes to
+claim the crown (one more than the current Legend's count); efforts you've
+already logged in the last 90 days count toward it. `You` is your lifetime
+effort count on the segment.
 
 ## Rate limits
 
