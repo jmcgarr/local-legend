@@ -1,5 +1,7 @@
 # strava-local-legends
 
+[![CI](https://github.com/jmcgarr/strava-local-legends/actions/workflows/ci.yml/badge.svg)](https://github.com/jmcgarr/strava-local-legends/actions/workflows/ci.yml)
+
 A CLI that finds cycling segments in a zip code where you have the best shot at
 becoming the Strava **Local Legend** (most efforts in a rolling 90-day window).
 
@@ -78,16 +80,9 @@ uv run strava_legends.py 94952 94954 --radius-km 8 --limit 20
 
 ### Example output
 
-```
-                Easiest Local Legend targets — Petaluma, CA 94952
- #  Segment              Dist    Grade  You 90d/all  Rides needed*  Score  Link
- 1  D St Sprint          0.4 km   0.2%         3/70              2     96  https://www.strava.com/segments/…
- 2  Western Ave Roll     2.1 km   0.9%         0/12             15     64  https://www.strava.com/segments/…
+![Example output: two tables of Local Legend targets](docs/demo.svg)
 
-               Unclaimed segments (1 ride = Local Legend) — Petaluma, CA 94952
- #  Segment              Dist    Grade  You 90d/all  Link
- 1  Bodega Ave Rollers   1.1 km   1.0%            —  https://www.strava.com/segments/…
-```
+(Fictional data, rendered by the actual table code.)
 
 `Rides needed*` = current Legend's 90-day effort count + 1, minus the efforts
 you've logged in the last 90 days. Your 90-day counts come from the List
