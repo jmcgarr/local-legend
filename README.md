@@ -107,6 +107,17 @@ The first run of a new area costs ~50–80 calls; repeat runs the same day cost
 a handful. If you do hit the limit mid-run, the tool prints what it gathered
 (everything fetched is cached) and a re-run 15 minutes later resumes cheaply.
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+This project is not affiliated with, endorsed by, or sponsored by Strava.
+You bring your own Strava API application (created under your own account),
+and your use of the Strava API is governed by the
+[Strava API Agreement](https://www.strava.com/legal/api). Never commit or
+share your Client ID/Secret. Note that `--csv` exports contain your personal
+Strava data (they're gitignored for that reason).
+
 ## Notes
 
 - Zip → coordinates uses the free, keyless [Zippopotam.us](https://api.zippopotam.us)
