@@ -1,4 +1,12 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "requests>=2.31",
+#     "keyring>=24.0",
+#     "rich>=13.0",
+# ]
+# ///
 """
 strava-legends: find Strava segments in a zip code where you have the best
 shot at becoming the Local Legend.

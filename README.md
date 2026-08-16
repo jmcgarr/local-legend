@@ -34,12 +34,10 @@ Output is a table with a clickable Strava link for each segment.
    Note: since June 2026, Strava requires an active Strava subscription on
    your account for Standard-tier API access.
 
-2. **Install**:
-
-   ```sh
-   python3 -m venv .venv
-   .venv/bin/pip install -r requirements.txt
-   ```
+2. **Install [uv](https://docs.astral.sh/uv/)** (once): `brew install uv`
+   (or `curl -LsSf https://astral.sh/uv/install.sh | sh`). That's it — no
+   venv, no pip; the script declares its own dependencies ([PEP 723]) and uv
+   resolves them transparently on first run.
 
 3. **First run** — you'll be prompted for the Client ID and Client Secret from
    step 1, then a browser window opens for a one-time Strava authorization.
@@ -47,11 +45,14 @@ Output is a table with a clickable Strava link for each segment.
    **macOS Keychain** — nothing sensitive is written to disk, and tokens
    auto-refresh, so you never need to log in again.
 
+[PEP 723]: https://peps.python.org/pep-0723/
+
 ## Usage
 
 ```sh
-.venv/bin/python strava_legends.py 94952
-.venv/bin/python strava_legends.py 94952 94954 --radius-km 8 --limit 20
+uv run strava_legends.py 94952
+uv run strava_legends.py 94952 94954 --radius-km 8 --limit 20
+./strava_legends.py 94952          # the shebang also invokes uv directly
 ```
 
 | Flag | Default | Meaning |
@@ -110,9 +111,12 @@ a handful. If you do hit the limit mid-run, the tool prints what it gathered
 ## Development
 
 ```sh
-.venv/bin/pip install pytest
-.venv/bin/python -m pytest tests/
+uv run --with pytest -m pytest tests/
 ```
+
+(Or the classic way: `python3 -m venv .venv`,
+`.venv/bin/pip install -r requirements.txt pytest`, then
+`.venv/bin/python -m pytest tests/`.)
 
 The test suite is fully offline (no Strava credentials or network needed).
 GitHub Actions runs it on Linux and macOS across Python 3.12–3.14 on every
