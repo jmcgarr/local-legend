@@ -59,6 +59,7 @@ Output is a table with a clickable Strava link for each segment.
 | `--radius-km` | 5 | Search radius around each zip's centroid |
 | `--limit` | 15 | Rows shown per table |
 | `--scan` | 0 (= all) | Cap segment-detail lookups to the N shortest/flattest candidates; by default every segment found in the area is checked |
+| `--ridden-only` | off | Ignore segments you've never ridden (skips the Explore sweep — much cheaper; ridden = found in your mined history, so raise `--max-rides` for deeper coverage) |
 | `--max-rides` | 10 | How many of your past rides in the area to mine |
 | `--no-explore` / `--no-history` | off | Use only one discovery method |
 | `--csv PATH` | off | Also export all scanned segments (claimed, unclaimed, and ones you already hold) to a CSV file |

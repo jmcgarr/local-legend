@@ -588,6 +588,10 @@ def main():
                              "found in the area)")
     parser.add_argument("--max-rides", type=int, default=10,
                         help="Max past rides in the area to mine for segments (default 10)")
+    parser.add_argument("--ridden-only", action="store_true",
+                        help="Ignore segments you've never ridden (as found in "
+                             "your mined ride history; raise --max-rides for "
+                             "deeper coverage). Skips the Explore sweep.")
     parser.add_argument("--no-explore", action="store_true",
                         help="Skip the Explore API (only segments you've ridden)")
     parser.add_argument("--no-history", action="store_true",
@@ -610,6 +614,10 @@ def main():
             return
     if not args.zips:
         parser.error("at least one zip code is required (or use --flush-cache)")
+    if args.ridden_only and args.no_history:
+        parser.error("--ridden-only needs your ride history; drop --no-history")
+    if args.ridden_only:
+        args.no_explore = True  # explore candidates would all be filtered out
 
     token = get_access_token(reset=args.reset_auth)
 
@@ -669,8 +677,14 @@ def main():
                 + (" (raise --max-rides to mine more)."
                    if len(area_rides) > n_mined else "."))
 
+        if args.ridden_only:
+            candidates = {k: v for k, v in candidates.items()
+                          if v.get("ridden_hint")}
+
         if not candidates:
-            console.print("[red]No segments found. Try a bigger --radius-km.[/red]")
+            console.print("[red]No segments found. Try a bigger --radius-km"
+                          + (" or --max-rides" if args.ridden_only else "")
+                          + ".[/red]")
             print_budget()
             sys.exit(1)
 
