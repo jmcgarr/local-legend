@@ -4,3 +4,7 @@ __pycache__/
 # --csv exports contain your personal Strava data
 *.csv
 .pytest_cache/
+# PyInstaller artifacts
+build/
+dist/
+*.spec

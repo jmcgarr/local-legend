@@ -104,6 +104,19 @@ def fresh(entry, ttl):
 # Credentials & OAuth (one-time browser auth, tokens live in the OS keychain)
 # --------------------------------------------------------------------------
 
+def keyring_get(key):
+    try:
+        return keyring.get_password(SERVICE, key)
+    except keyring.errors.KeyringError as e:
+        console.print(
+            f"[red]Can't access your OS keychain ({e}).[/red]\n"
+            "If a keychain permission dialog appeared, click "
+            "[bold]Always Allow[/bold] and re-run. (A freshly downloaded or "
+            "rebuilt binary counts as a new app to macOS, so it must be "
+            "granted access once.)")
+        sys.exit(1)
+
+
 def get_client_credentials(reset=False):
     if reset:
         for key in ("client_id", "client_secret", "tokens"):
@@ -112,8 +125,8 @@ def get_client_credentials(reset=False):
             except keyring.errors.PasswordDeleteError:
                 pass
 
-    client_id = keyring.get_password(SERVICE, "client_id")
-    client_secret = keyring.get_password(SERVICE, "client_secret")
+    client_id = keyring_get("client_id")
+    client_secret = keyring_get("client_secret")
 
     if not client_id or not client_secret:
         console.print("\n[bold]One-time setup: connect your Strava API application[/bold]")
@@ -206,7 +219,7 @@ def browser_authorize(client_id, client_secret):
 def get_access_token(reset=False):
     client_id, client_secret = get_client_credentials(reset=reset)
 
-    raw = keyring.get_password(SERVICE, "tokens")
+    raw = keyring_get("tokens")
     tokens = json.loads(raw) if raw else None
 
     if tokens and tokens.get("expires_at", 0) > time.time() + 60:

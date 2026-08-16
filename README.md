@@ -34,10 +34,16 @@ Output is a table with a clickable Strava link for each segment.
    Note: since June 2026, Strava requires an active Strava subscription on
    your account for Standard-tier API access.
 
-2. **Install [uv](https://docs.astral.sh/uv/)** (once): `brew install uv`
-   (or `curl -LsSf https://astral.sh/uv/install.sh | sh`). That's it — no
-   venv, no pip; the script declares its own dependencies ([PEP 723]) and uv
-   resolves them transparently on first run.
+2. **Get the tool**, either way:
+   - **With [uv](https://docs.astral.sh/uv/)** (once: `brew install uv` or
+     `curl -LsSf https://astral.sh/uv/install.sh | sh`). No venv, no pip; the
+     script declares its own dependencies ([PEP 723]) and uv resolves them
+     transparently on first run.
+   - **Prebuilt binary** — download the one for your platform from
+     [GitHub Releases](../../releases), `chmod +x` it, and run. No Python
+     needed. macOS notes: the binary is unsigned, so the first launch needs
+     right-click → Open (or `xattr -d com.apple.quarantine <file>`), and
+     macOS will ask once for keychain permission — click **Always Allow**.
 
 3. **First run** — you'll be prompted for the Client ID and Client Secret from
    step 1, then a browser window opens for a one-time Strava authorization.
@@ -53,6 +59,7 @@ Output is a table with a clickable Strava link for each segment.
 uv run strava_legends.py 94952
 uv run strava_legends.py 94952 94954 --radius-km 8 --limit 20
 ./strava_legends.py 94952          # the shebang also invokes uv directly
+./strava-legends-macos-arm64 94952 # or the downloaded binary
 ```
 
 | Flag | Default | Meaning |
@@ -121,6 +128,19 @@ uv run --with pytest -m pytest tests/
 The test suite is fully offline (no Strava credentials or network needed).
 GitHub Actions runs it on Linux and macOS across Python 3.12–3.14 on every
 push and pull request.
+
+**Releases:** pushing a version tag (`git tag v0.1.0 && git push --tags`)
+triggers a workflow that runs the tests, builds single-file binaries with
+PyInstaller for Linux (x86_64), macOS (Intel and Apple Silicon), and Windows,
+smoke-tests each, and attaches them to a GitHub Release for that tag.
+
+## TODO
+
+- **Publish to PyPI** so `uvx strava-legends` / `pipx install strava-legends`
+  work: add a `pyproject.toml` with a `strava-legends` console entry point,
+  register the repo for [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+  on PyPI (OIDC — no API token secrets), and add a publish job to the release
+  workflow (`uv build` + `pypa/gh-action-pypi-publish`).
 
 ## License
 
