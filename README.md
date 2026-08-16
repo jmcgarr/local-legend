@@ -107,6 +107,17 @@ The first run of a new area costs ~50–80 calls; repeat runs the same day cost
 a handful. If you do hit the limit mid-run, the tool prints what it gathered
 (everything fetched is cached) and a re-run 15 minutes later resumes cheaply.
 
+## Development
+
+```sh
+.venv/bin/pip install pytest
+.venv/bin/python -m pytest tests/
+```
+
+The test suite is fully offline (no Strava credentials or network needed).
+GitHub Actions runs it on Linux and macOS across Python 3.12–3.14 on every
+push and pull request.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

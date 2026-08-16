@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 # --csv exports contain your personal Strava data
 *.csv
+.pytest_cache/
