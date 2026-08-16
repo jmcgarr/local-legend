@@ -545,9 +545,15 @@ def print_unclaimed_table(rows, area_labels):
     console.print(table)
 
 
+METRIC = False
+
+
 def dist_cell(r):
-    return f"{r['distance'] / 1000:.1f} km" if r["distance"] >= 1000 \
-        else f"{r['distance']:.0f} m"
+    if METRIC:
+        return f"{r['distance'] / 1000:.1f} km" if r["distance"] >= 1000 \
+            else f"{r['distance']:.0f} m"
+    miles = r["distance"] / 1609.344
+    return f"{miles:.1f} mi" if miles >= 10 else f"{miles:.2f} mi"
 
 
 def export_csv(path, claimed, unclaimed, yours):
@@ -598,6 +604,8 @@ def main():
                         help="Skip mining your ride history")
     parser.add_argument("--country", default="us",
                         help="Country code for zip lookup (default us)")
+    parser.add_argument("--metric", action="store_true",
+                        help="Show distances in meters/kilometers instead of miles")
     parser.add_argument("--csv", metavar="PATH",
                         help="Also export all scanned segments to a CSV file")
     parser.add_argument("--flush-cache", action="store_true",
@@ -618,6 +626,8 @@ def main():
         parser.error("--ridden-only needs your ride history; drop --no-history")
     if args.ridden_only:
         args.no_explore = True  # explore candidates would all be filtered out
+    global METRIC
+    METRIC = args.metric
 
     token = get_access_token(reset=args.reset_auth)
 

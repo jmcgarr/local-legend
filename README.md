@@ -63,6 +63,7 @@ Output is a table with a clickable Strava link for each segment.
 | `--max-rides` | 10 | How many of your past rides in the area to mine |
 | `--no-explore` / `--no-history` | off | Use only one discovery method |
 | `--csv PATH` | off | Also export all scanned segments (claimed, unclaimed, and ones you already hold) to a CSV file |
+| `--metric` | off | Show distances in meters/km (default is miles) |
 | `--country` | us | Country code for zip lookup |
 | `--flush-cache` | off | Delete all cached API responses; alone it just flushes and exits, with zip codes it flushes then runs fresh |
 | `--reset-auth` | off | Forget stored credentials and re-authenticate |
