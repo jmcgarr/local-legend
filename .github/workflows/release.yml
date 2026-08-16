@@ -15,8 +15,6 @@ jobs:
         include:
           - os: ubuntu-latest
             asset: strava-legends-linux-x86_64
-          - os: macos-13
-            asset: strava-legends-macos-x86_64
           - os: macos-latest
             asset: strava-legends-macos-arm64
           - os: windows-latest

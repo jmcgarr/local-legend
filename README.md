@@ -131,8 +131,11 @@ push and pull request.
 
 **Releases:** pushing a version tag (`git tag v0.1.0 && git push --tags`)
 triggers a workflow that runs the tests, builds single-file binaries with
-PyInstaller for Linux (x86_64), macOS (Intel and Apple Silicon), and Windows,
+PyInstaller for Linux (x86_64), macOS (Apple Silicon), and Windows,
 smoke-tests each, and attaches them to a GitHub Release for that tag.
+(No Intel-mac binary: GitHub retired the `macos-13` Intel runners, and the
+arm64 binary won't run on Intel Macs — Intel-mac users should use the uv
+path instead.)
 
 ## TODO
 
