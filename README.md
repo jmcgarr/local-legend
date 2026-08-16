@@ -126,8 +126,8 @@ uv run --with pytest -m pytest tests/
 `.venv/bin/python -m pytest tests/`.)
 
 The test suite is fully offline (no Strava credentials or network needed).
-GitHub Actions runs it on Linux and macOS across Python 3.12–3.14 on every
-push and pull request.
+GitHub Actions runs it on Linux and macOS across Python 3.11–3.14 (matching
+the script's `requires-python`) on every push and pull request.
 
 **Releases:** pushing a version tag (`git tag v0.1.0 && git push --tags`)
 triggers a workflow that runs the tests, builds single-file binaries with
