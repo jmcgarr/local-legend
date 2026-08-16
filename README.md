@@ -63,7 +63,7 @@ Output is a table with a clickable Strava link for each segment.
 | `--no-explore` / `--no-history` | off | Use only one discovery method |
 | `--csv PATH` | off | Also export all scanned segments (claimed, unclaimed, and ones you already hold) to a CSV file |
 | `--country` | us | Country code for zip lookup |
-| `--no-cache` | off | Ignore cached API responses this run |
+| `--flush-cache` | off | Delete all cached API responses; alone it just flushes and exits, with zip codes it flushes then runs fresh |
 | `--reset-auth` | off | Forget stored credentials and re-authenticate |
 
 ### Example output
@@ -94,9 +94,12 @@ API responses are cached in `~/.cache/strava-legends/`:
 
 - **your activities** — forever (they're immutable); the activity list is
   fetched incrementally (only rides newer than the last run)
-- **segment details & your 90-day effort counts** — 24 hours
+- **segment details & your 90-day effort counts** — 24 hours (expired
+  entries are pruned on every run, so segment data flushes itself daily)
 - **explore sweeps** — 7 days
 - **zip geocodes** — forever
+
+`--flush-cache` wipes everything on demand.
 
 The first run of a new area costs ~50–80 calls; repeat runs the same day cost
 a handful. If you do hit the limit mid-run, the tool prints what it gathered

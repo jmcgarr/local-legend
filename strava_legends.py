@@ -63,11 +63,24 @@ class RateLimited(Exception):
 # Disk cache
 # --------------------------------------------------------------------------
 
-def cache_load(name):
+def cache_load(name, ttl=None):
+    """Load a cache file; entries past their TTL are pruned so segment data
+    is flushed daily (explore weekly) rather than accumulating forever."""
     try:
-        return json.loads((CACHE_DIR / f"{name}.json").read_text())
+        data = json.loads((CACHE_DIR / f"{name}.json").read_text())
     except (OSError, json.JSONDecodeError):
         return {}
+    if ttl:
+        data = {k: v for k, v in data.items()
+                if isinstance(v, dict) and fresh(v, ttl)}
+    return data
+
+
+def flush_cache():
+    files = list(CACHE_DIR.glob("*.json")) if CACHE_DIR.exists() else []
+    for f in files:
+        f.unlink()
+    return len(files)
 
 
 def cache_save(name, data):
@@ -564,7 +577,7 @@ def main():
         prog="strava-legends",
         description="Find Strava segments in a zip code that are easiest to "
                     "become the Local Legend on (cycling).")
-    parser.add_argument("zips", nargs="+", help="One or more zip codes")
+    parser.add_argument("zips", nargs="*", help="One or more zip codes")
     parser.add_argument("--radius-km", type=float, default=5.0,
                         help="Search radius around each zip centroid (default 5)")
     parser.add_argument("--limit", type=int, default=15,
@@ -583,16 +596,20 @@ def main():
                         help="Country code for zip lookup (default us)")
     parser.add_argument("--csv", metavar="PATH",
                         help="Also export all scanned segments to a CSV file")
-    parser.add_argument("--no-cache", action="store_true",
-                        help="Ignore cached API responses this run")
+    parser.add_argument("--flush-cache", action="store_true",
+                        help="Delete all cached API responses, then run "
+                             "(or just exit if no zip codes given)")
     parser.add_argument("--reset-auth", action="store_true",
                         help="Forget stored credentials and re-authenticate")
     args = parser.parse_args()
 
-    if args.no_cache:
-        for f in CACHE_DIR.glob("*.json"):
-            if f.stem != "geo":  # geocodes never go stale
-                f.unlink()
+    if args.flush_cache:
+        n = flush_cache()
+        console.print(f"Cache flushed ({n} file(s) removed from {CACHE_DIR}).")
+        if not args.zips:
+            return
+    if not args.zips:
+        parser.error("at least one zip code is required (or use --flush-cache)")
 
     token = get_access_token(reset=args.reset_auth)
 
@@ -605,9 +622,9 @@ def main():
         console.print(f"Searching around [bold]{a['label']} ({a['zip']})[/bold] "
                       f"±{args.radius_km:g} km")
 
-    explore_cache = cache_load("explore")
-    seg_cache = cache_load("segments")
-    eff_cache = cache_load("efforts90")
+    explore_cache = cache_load("explore", EXPLORE_TTL)
+    seg_cache = cache_load("segments", SEGMENT_TTL)
+    eff_cache = cache_load("efforts90", EFFORTS_TTL)
     acts = cache_load("activities")
     limited = False
     candidates = {}  # segment id -> summary dict
