@@ -1,5 +1,5 @@
 [tool.pytest.ini_options]
 # Anchors pytest's rootdir here and puts the repo root on sys.path so tests
-# can `import strava_legends` no matter how or from where pytest is invoked.
+# can `import local_legends` no matter how or from where pytest is invoked.
 pythonpath = ["."]
 testpaths = ["tests"]

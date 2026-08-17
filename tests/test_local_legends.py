@@ -10,7 +10,7 @@ import urllib.request
 import pytest
 from rich.console import Console
 
-import strava_legends as sl
+import local_legends as sl
 
 
 @pytest.fixture(autouse=True)

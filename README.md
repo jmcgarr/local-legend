@@ -1,9 +1,11 @@
-# strava-local-legends
+# local-legend
 
-[![CI](https://github.com/jmcgarr/strava-local-legends/actions/workflows/ci.yml/badge.svg)](https://github.com/jmcgarr/strava-local-legends/actions/workflows/ci.yml)
+[![CI](https://github.com/jmcgarr/local-legend/actions/workflows/ci.yml/badge.svg)](https://github.com/jmcgarr/local-legend/actions/workflows/ci.yml)
 
 A CLI that finds cycling segments in a zip code where you have the best shot at
 becoming the Strava **Local Legend** (most efforts in a rolling 90-day window).
+
+*Compatible with Strava.*
 
 **Every segment found in the area is checked by default** — ridden or not —
 and results are sorted by **fewest rides needed to claim Local Legend**: the
@@ -58,10 +60,10 @@ Output is a table with a clickable Strava link for each segment.
 ## Usage
 
 ```sh
-uv run strava_legends.py 94952
-uv run strava_legends.py 94952 94954 --radius-km 8 --limit 20
-./strava_legends.py 94952          # the shebang also invokes uv directly
-./strava-legends-macos-arm64 94952 # or the downloaded binary
+uv run local_legends.py 94952
+uv run local_legends.py 94952 94954 --radius-km 8 --limit 20
+./local_legends.py 94952          # the shebang also invokes uv directly
+./local-legends-macos-arm64 94952 # or the downloaded binary
 ```
 
 | Flag | Default | Meaning |
@@ -134,8 +136,8 @@ path instead.)
 
 ## TODO
 
-- **Publish to PyPI** so `uvx strava-legends` / `pipx install strava-legends`
-  work: add a `pyproject.toml` with a `strava-legends` console entry point,
+- **Publish to PyPI** so `uvx local-legends` / `pipx install local-legends`
+  work: add a `pyproject.toml` with a `local-legends` console entry point,
   register the repo for [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
   on PyPI (OIDC — no API token secrets), and add a publish job to the release
   workflow (`uv build` + `pypa/gh-action-pypi-publish`).

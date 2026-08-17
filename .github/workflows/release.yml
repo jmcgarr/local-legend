@@ -14,11 +14,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            asset: strava-legends-linux-x86_64
+            asset: local-legends-linux-x86_64
           - os: macos-latest
-            asset: strava-legends-macos-arm64
+            asset: local-legends-macos-arm64
           - os: windows-latest
-            asset: strava-legends-windows-x86_64.exe
+            asset: local-legends-windows-x86_64.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -35,18 +35,18 @@ jobs:
 
       - name: Build binary
         run: >
-          pyinstaller --onefile --name strava-legends
+          pyinstaller --onefile --name local-legends
           --collect-submodules keyring.backends
-          strava_legends.py
+          local_legends.py
 
       - name: Rename and smoke-test binary
         shell: bash
         run: |
           cd dist
           if [ "$RUNNER_OS" = "Windows" ]; then
-            mv strava-legends.exe "${{ matrix.asset }}"
+            mv local-legends.exe "${{ matrix.asset }}"
           else
-            mv strava-legends "${{ matrix.asset }}"
+            mv local-legends "${{ matrix.asset }}"
           fi
           ./"${{ matrix.asset }}" --help
 
