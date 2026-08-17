@@ -9,7 +9,7 @@ You need [uv](https://docs.astral.sh/uv/) (or a classic venv; see the README's
 Development section). To run the tool from your checkout:
 
 ```sh
-uv run strava_legends.py <zip>
+uv run local_legends.py <zip>
 ```
 
 You'll need your own Strava API application (see the README) to run it for

@@ -8,7 +8,7 @@
 # ]
 # ///
 """
-strava-legends: find Strava segments in a zip code where you have the best
+local-legends: find Strava segments in a zip code where you have the best
 shot at becoming the Local Legend.
 
 Discovery is hybrid:
@@ -601,7 +601,7 @@ def export_csv(path, claimed, unclaimed, yours):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="strava-legends",
+        prog="local-legends",
         description="Find Strava segments in a zip code that are easiest to "
                     "become the Local Legend on (cycling).")
     parser.add_argument("zips", nargs="*", help="One or more zip codes")
