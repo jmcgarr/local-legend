@@ -34,18 +34,24 @@ Output is a table with a clickable Strava link for each segment.
 
 ### Option A: Prebuilt binary (easiest — no Python required)
 
-Download the binary for your platform from
-[GitHub Releases](../../releases) — `local-legends-macos-arm64`,
-`local-legends-linux-x86_64`, or `local-legends-windows-x86_64.exe` — then:
+Grab the binary for your platform — `local-legends-macos-arm64`,
+`local-legends-linux-x86_64`, or `local-legends-windows-x86_64.exe`.
+
+**On macOS, download with `curl` rather than the browser** — the binary is
+unsigned, and browser downloads get quarantined so macOS refuses to run them
+("move to trash"); `curl` downloads don't:
 
 ```sh
+curl -LO https://github.com/jmcgarr/local-legend/releases/latest/download/local-legends-macos-arm64
 chmod +x local-legends-macos-arm64
 ./local-legends-macos-arm64 <zip code>
 ```
 
-macOS notes: the binary is unsigned, so the first launch needs
-right-click → Open (or `xattr -d com.apple.quarantine <file>`), and macOS
-will ask once for keychain permission — click **Always Allow**.
+If you already downloaded it with a browser, clear the quarantine flag with
+`xattr -d com.apple.quarantine local-legends-macos-arm64` (or: try to run
+it, then System Settings → Privacy & Security → **Open Anyway** — the old
+right-click → Open trick no longer works on macOS 15+). Separately, macOS
+will ask once for keychain permission on first run — click **Always Allow**.
 (No Intel-mac binary is published — use Option B on Intel Macs.)
 
 ### Option B: uv (runs the script straight from a checkout)
