@@ -30,6 +30,40 @@ Output is a table with a clickable Strava link for each segment.
 - **Your ride history**: recent rides that started near the zip code are mined
   for the segments you rode through.
 
+## Install — pick one option
+
+### Option A: Prebuilt binary (easiest — no Python required)
+
+Download the binary for your platform from
+[GitHub Releases](../../releases) — `local-legends-macos-arm64`,
+`local-legends-linux-x86_64`, or `local-legends-windows-x86_64.exe` — then:
+
+```sh
+chmod +x local-legends-macos-arm64
+./local-legends-macos-arm64 <zip code>
+```
+
+macOS notes: the binary is unsigned, so the first launch needs
+right-click → Open (or `xattr -d com.apple.quarantine <file>`), and macOS
+will ask once for keychain permission — click **Always Allow**.
+(No Intel-mac binary is published — use Option B on Intel Macs.)
+
+### Option B: uv (runs the script straight from a checkout)
+
+Install [uv](https://docs.astral.sh/uv/) once (`brew install uv` or
+`curl -LsSf https://astral.sh/uv/install.sh | sh`), clone this repo, done —
+no venv, no pip. The script declares its own dependencies ([PEP 723]) and uv
+resolves them transparently on first run.
+
+### Option C: classic Python
+
+```sh
+python3 -m venv .venv                       # needs Python 3.11+
+.venv/bin/pip install -r requirements.txt
+```
+
+[PEP 723]: https://peps.python.org/pep-0723/
+
 ## Setup (one time)
 
 1. **Strava API app** — go to <https://www.strava.com/settings/api> and create
@@ -38,32 +72,30 @@ Output is a table with a clickable Strava link for each segment.
    Note: since June 2026, Strava requires an active Strava subscription on
    your account for Standard-tier API access.
 
-2. **Get the tool**, either way:
-   - **With [uv](https://docs.astral.sh/uv/)** (once: `brew install uv` or
-     `curl -LsSf https://astral.sh/uv/install.sh | sh`). No venv, no pip; the
-     script declares its own dependencies ([PEP 723]) and uv resolves them
-     transparently on first run.
-   - **Prebuilt binary** — download the one for your platform from
-     [GitHub Releases](../../releases), `chmod +x` it, and run. No Python
-     needed. macOS notes: the binary is unsigned, so the first launch needs
-     right-click → Open (or `xattr -d com.apple.quarantine <file>`), and
-     macOS will ask once for keychain permission — click **Always Allow**.
-
-3. **First run** — you'll be prompted for the Client ID and Client Secret from
+2. **First run** — you'll be prompted for the Client ID and Client Secret from
    step 1, then a browser window opens for a one-time Strava authorization.
    Everything (client secret, access token, refresh token) is stored in the
    **macOS Keychain** — nothing sensitive is written to disk, and tokens
    auto-refresh, so you never need to log in again.
 
-[PEP 723]: https://peps.python.org/pep-0723/
-
 ## Usage
 
+Depending on your install option, the command is:
+
 ```sh
-uv run local_legends.py 94952
-uv run local_legends.py 94952 94954 --radius-km 8 --limit 20
-./local_legends.py 94952          # the shebang also invokes uv directly
-./local-legends-macos-arm64 94952 # or the downloaded binary
+./local-legends-macos-arm64 94952   # Option A: prebuilt binary
+uv run local_legends.py 94952       # Option B: uv
+./local_legends.py 94952            # Option B: the shebang invokes uv too
+.venv/bin/python local_legends.py 94952   # Option C: classic Python
+```
+
+Examples (shown with the binary; the flags work identically everywhere):
+
+```sh
+./local-legends-macos-arm64 94952 94954              # multiple zip codes
+./local-legends-macos-arm64 94952 --radius-km 8      # wider search area
+./local-legends-macos-arm64 94952 --ridden-only      # only segments you've ridden
+./local-legends-macos-arm64 94952 --csv targets.csv  # also export a CSV
 ```
 
 | Flag | Default | Meaning |
