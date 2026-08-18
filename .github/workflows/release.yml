@@ -14,11 +14,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            asset: local-legends-linux-x86_64
+            asset: local-legends-linux-x86_64.tar.gz
           - os: macos-latest
-            asset: local-legends-macos-arm64
+            asset: local-legends-macos-arm64.tar.gz
           - os: windows-latest
-            asset: local-legends-windows-x86_64.exe
+            asset: local-legends-windows-x86_64.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -33,22 +33,25 @@ jobs:
       - name: Run tests
         run: pytest -q
 
+      # --onedir, not --onefile: a single-file build re-extracts the whole
+      # bundle on EVERY launch (~6s startup); the folder bundle starts in
+      # ~0.2s after the OS scans it once.
       - name: Build binary
         run: >
-          pyinstaller --onefile --name local-legends
+          pyinstaller --onedir --name local-legends
           --collect-submodules keyring.backends
           local_legends.py
 
-      - name: Rename and smoke-test binary
+      - name: Smoke-test and package
         shell: bash
         run: |
           cd dist
+          ./local-legends/local-legends --help
           if [ "$RUNNER_OS" = "Windows" ]; then
-            mv local-legends.exe "${{ matrix.asset }}"
+            7z a "${{ matrix.asset }}" local-legends
           else
-            mv local-legends "${{ matrix.asset }}"
+            tar -czf "${{ matrix.asset }}" local-legends
           fi
-          ./"${{ matrix.asset }}" --help
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v3
